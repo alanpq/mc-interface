@@ -4,32 +4,88 @@ use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use sass_rs::{compile_file, Options};
+use actix_files::NamedFile;
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 
 use handlebars::Handlebars;
+use sass_rs::{compile_file, Options};
+
+use serde::{Deserialize, Serialize};
+
+
+#[macro_use]
+extern crate serde_json;
+
+#[macro_use]
+extern crate lazy_static;
+
+// thanks rust-lang git repo for the sass compile stuff
+
+#[derive(Clone, Serialize)]
+struct CSSFiles {
+    app: String,
+    fonts: String,
+    //vendor: String,
+}
+#[derive(Clone, Serialize)]
+struct JSFiles {
+    app: String,
+}
+#[derive(Clone, Serialize)]
+struct AssetFiles {
+    css: CSSFiles,
+    //js: JSFiles,
+}
+
+lazy_static! {
+    static ref ASSETS: AssetFiles = {
+        let app_css_file = compile_sass("app");
+        let fonts_css_file = compile_sass("fonts");
+        //let vendor_css_file = concat_vendor_css(vec!["tachyons"]);
+        //let app_js_file = concat_app_js(vec!["tools-install"]);
+
+        AssetFiles {
+            css: CSSFiles {
+                app: app_css_file,
+                fonts: fonts_css_file,
+            //    vendor: vendor_css_file,
+            },
+            //js: JSFiles { app: app_js_file },
+        }
+    };
+}
+
+#[get("/static/{filename}")]
+async fn get_file(req: HttpRequest) -> Result<NamedFile> {
+    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
+    Ok(NamedFile::open(path)?)
+}
 
 #[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
+async fn index(hb: web::Data<Handlebars<'_>>) -> impl Responder {
+    let data = json!({
+        "name": "Handlebars"
+    });
+    let body = hb.render("index", &data).unwrap();
 
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
-
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there!")
+    HttpResponse::Ok().body(body)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    // Handlebars uses a repository for the compiled templates. This object must be
+    // shared between the application threads, and is therefore passed to the
+    // Application Builder as an atomic reference-counted pointer.
+    let mut handlebars = Handlebars::new();
+    handlebars
+        .register_templates_directory(".html", "./static/templates")
+        .unwrap();
+    let handlebars_ref = web::Data::new(handlebars);
+
+    HttpServer::new(move || {
         App::new()
-            .service(hello)
-            .service(echo)
-            .route("/hey", web::get().to(manual_hello))
+            .app_data(handlebars_ref.clone())
+            .service(index)
     })
     .bind("127.0.0.1:8080")?
     .run()
