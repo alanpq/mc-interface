@@ -1,0 +1,15 @@
+:root {
+    --bg1: #120c18;
+    --bg2: #201927;
+    --bg3: #2e2733;
+    --bg4: #4e4853;
+
+    --fg1: #ffffff;
+    --fg2: #c2c2c2;
+    --fg3: #727272;
+}
+
+html, body {
+    background-color: var(--bg1);
+    color: var(--fg1);
+}

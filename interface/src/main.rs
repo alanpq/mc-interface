@@ -3,15 +3,15 @@ use std::env;
 use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use actix_files::NamedFile;
+use actix_files::{NamedFile, Files};
 use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 
 use handlebars::Handlebars;
 use sass_rs::{compile_file, Options};
 
 use serde::{Deserialize, Serialize};
-
 
 #[macro_use]
 extern crate serde_json;
@@ -55,24 +55,39 @@ lazy_static! {
     };
 }
 
-#[get("/static/{filename}")]
-async fn get_file(req: HttpRequest) -> Result<NamedFile> {
-    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
-    Ok(NamedFile::open(path)?)
+struct AppState<'a> {
+    hb: web::Data<Handlebars<'a>>,
+    assets: &'a AssetFiles,
 }
 
-#[get("/")]
-async fn index(hb: web::Data<Handlebars<'_>>) -> impl Responder {
-    let data = json!({
-        "name": "Handlebars"
+// impl AppState<'_> {
+//     pub fn new<'a>(hb: Handlebars<'a>) -> AppState<'a> {
+//         AppState {
+//             hb: web::Data::new(hb),
+//         }
+//     }
+// }
+
+// #[get("/static/{filename:.*}")]
+// async fn get_file(req: HttpRequest) -> Result<NamedFile> {
+//     let path: PathBuf = req.match_info().query("filename").parse().unwrap();
+//     Ok(NamedFile::open(path)?)
+// }
+
+#[get("/")] // TODO: actually learn about lifetime specifiers
+async fn index(data: web::Data<AppState<'_>>) -> impl Responder {
+    let d = json!({
+        "name": "Handlebars",
+        "app_css": &data.assets.css.app
     });
-    let body = hb.render("index", &data).unwrap();
+    let body = &data.hb.render("index", &d).unwrap();
 
     HttpResponse::Ok().body(body)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    lazy_static::initialize(&ASSETS);
     // Handlebars uses a repository for the compiled templates. This object must be
     // shared between the application threads, and is therefore passed to the
     // Application Builder as an atomic reference-counted pointer.
@@ -84,7 +99,11 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(handlebars_ref.clone())
+            .data(AppState {
+                hb: handlebars_ref.clone(),
+                assets: &ASSETS,
+            })
+            .service(Files::new("/static", "./static"))
             .service(index)
     })
     .bind("127.0.0.1:8080")?
