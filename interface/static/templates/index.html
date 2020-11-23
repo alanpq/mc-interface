@@ -5,8 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MC Server</title>
     <link rel="stylesheet" href="{{app_css}}">
+    <script src="static/vendor/DOMPurify.js"></script>
+    <script src="static/js/index.js" defer></script>
 </head>
 <body>
     <h1>MC Server Interface</h1>
+    <div>
+      <button id="btn_connect">Connect</button>
+      Status: <span id="span_status">disconnected</span>
+    </div>
+
+    <div
+      id="div_log"
+      style="width: 20em; height: 15em; overflow: auto; border: 1px solid black"
+    ></div>
+
+    <input id="input_text" type="text" />
+    <input id="btn_send" type="button" value="Send" />
+    <input id="btn_start" type="button" value="Start" />
+    <input id="btn_stop" type="button" value="Stop" />
 </body>
 </html>

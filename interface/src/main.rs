@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_files::{NamedFile, Files};
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result, Error};
+
+use actix::{Actor, StreamHandler};
+use actix_web_actors::ws;
 
 use handlebars::Handlebars;
 use sass_rs::{compile_file, Options};
@@ -35,6 +38,12 @@ struct JSFiles {
 struct AssetFiles {
     css: CSSFiles,
     //js: JSFiles,
+}
+
+/// Define HTTP actor
+struct WsActor;
+impl Actor for WsActor {
+    type Context = ws::WebsocketContext<Self>;
 }
 
 lazy_static! {
@@ -74,6 +83,53 @@ struct AppState<'a> {
 //     Ok(NamedFile::open(path)?)
 // }
 
+/// Handler for ws::Message message
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsActor {
+    fn handle(
+        &mut self,
+        msg: Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Text(text)) => {
+                let cmd_type = &text[0..4];
+                let body = &text[4..];
+                println!("msg received - '{}' - : '{}'", cmd_type, body);
+                match cmd_type {
+                    "rcon" => {
+                        ctx.text(format!("rcon output: {}", body))
+                    },
+                    "scmd" => {
+                        match body {
+                            "0" => {
+                                ctx.text("started server.")
+                            },
+                            "1" => {
+                                ctx.text("stopped server.")
+                            },
+                            _ => {println!("invalid message - {}", text)}
+                        }
+                    }
+                    _ => (
+                        println!("invalid message - {}", text)
+                    ),
+                }
+            },
+            Ok(ws::Message::Binary(bin)) => {
+                //ctx.binary(bin)
+            },
+            _ => (),
+        }
+    }
+}
+
+async fn ws_endpoint(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+    let resp = ws::start(WsActor {}, &req, stream);
+    println!("{:?}", resp);
+    resp
+}
+
 #[get("/")] // TODO: actually learn about lifetime specifiers
 async fn index(data: web::Data<AppState<'_>>) -> impl Responder {
     let d = json!({
@@ -105,6 +161,7 @@ async fn main() -> std::io::Result<()> {
             })
             .service(Files::new("/static", "./static"))
             .service(index)
+            .route("/ws/", web::get().to(ws_endpoint))
     })
     .bind("127.0.0.1:8080")?
     .run()
