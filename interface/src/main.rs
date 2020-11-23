@@ -1,12 +1,9 @@
 use std::collections::hash_map::DefaultHasher;
-use std::env;
 use std::fs;
 use std::hash::Hasher;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use actix_files::{NamedFile, Files};
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result, Error};
+use actix_files::{Files};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result, Error};
 
 use actix::{Actor, StreamHandler};
 use actix_web_actors::ws;
@@ -14,7 +11,7 @@ use actix_web_actors::ws;
 use handlebars::Handlebars;
 use sass_rs::{compile_file, Options};
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 
 #[macro_use]
 extern crate serde_json;
@@ -116,9 +113,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsActor {
                     ),
                 }
             },
-            Ok(ws::Message::Binary(bin)) => {
-                //ctx.binary(bin)
-            },
+            // Ok(ws::Message::Binary(bin)) => {
+            //     //ctx.binary(bin)
+            // },
             _ => (),
         }
     }
@@ -189,18 +186,18 @@ fn compile_sass(filename: &str) -> String {
     String::from(&css_file[1..])
 }
 
-fn concat_vendor_css(files: Vec<&str>) -> String {
-    let mut concatted = String::new();
-    for filestem in files {
-        let vendor_path = format!("./static/styles/{}.css", filestem);
-        let contents = fs::read_to_string(vendor_path).expect("couldn't read vendor css");
-        concatted.push_str(&contents);
-    }
+// fn concat_vendor_css(files: Vec<&str>) -> String {
+//     let mut concatted = String::new();
+//     for filestem in files {
+//         let vendor_path = format!("./static/styles/{}.css", filestem);
+//         let contents = fs::read_to_string(vendor_path).expect("couldn't read vendor css");
+//         concatted.push_str(&contents);
+//     }
 
-    let css_sha = format!("vendor_{}", hash_css(&concatted));
-    let css_path = format!("./static/styles/{}.css", &css_sha);
+//     let css_sha = format!("vendor_{}", hash_css(&concatted));
+//     let css_path = format!("./static/styles/{}.css", &css_sha);
 
-    fs::write(&css_path, &concatted).expect("couldn't write vendor css");
+//     fs::write(&css_path, &concatted).expect("couldn't write vendor css");
 
-    String::from(&css_path[1..])
-}
+//     String::from(&css_path[1..])
+// }
