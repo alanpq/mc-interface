@@ -13,6 +13,8 @@ use sass_rs::{compile_file, Options};
 
 use serde::{Serialize};
 
+pub mod proc_control;
+
 #[macro_use]
 extern crate serde_json;
 
@@ -37,12 +39,6 @@ struct AssetFiles {
     //js: JSFiles,
 }
 
-/// Define HTTP actor
-struct WsActor;
-impl Actor for WsActor {
-    type Context = ws::WebsocketContext<Self>;
-}
-
 lazy_static! {
     static ref ASSETS: AssetFiles = {
         let app_css_file = compile_sass("app");
@@ -59,11 +55,18 @@ lazy_static! {
             //js: JSFiles { app: app_js_file },
         }
     };
+
+    // static ref RCA: Addr<proc_control::RCONActor> = {
+    //     proc_control::RCONActor{rcon: None}.start()
+    // };
 }
+
+use actix::*;
+use futures::executor::block_on;
 
 struct AppState<'a> {
     hb: web::Data<Handlebars<'a>>,
-    assets: &'a AssetFiles,
+    assets: &'a AssetFiles
 }
 
 // impl AppState<'_> {
@@ -80,6 +83,14 @@ struct AppState<'a> {
 //     Ok(NamedFile::open(path)?)
 // }
 
+/// Define HTTP actor
+pub struct WsActor {
+    pub rcon: Option<Addr<proc_control::RCONActor>>
+}
+impl Actor for WsActor {
+    type Context = ws::WebsocketContext<Self>;
+}
+
 /// Handler for ws::Message message
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsActor {
     fn handle(
@@ -95,16 +106,37 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsActor {
                 println!("msg received - '{}' - : '{}'", cmd_type, body);
                 match cmd_type {
                     "rcon" => {
-                        ctx.text(format!("rcon output: {}", body))
+                        if !self.rcon.is_some() { // TODO: fix this shit
+                            self.rcon = Some(proc_control::RCONActor{rcon: None}.start())
+                        }
+                        ctx.text(format!("rcon output: {}", block_on(self.rcon.as_ref().unwrap().send(proc_control::RCONCmd{
+                            cmd_type: proc_control::RCONCmdType::MSG,
+                            body: String::from(body),
+                        })).unwrap().unwrap()));
+                        
                     },
                     "scmd" => {
                         match body {
                             "0" => {
-                                ctx.text("started server.")
+                                if proc_control::start_server().is_ok() {
+                                    
+                                    ctx.text("Server starting...")
+                                } else {
+                                    ctx.text("Server stopped.")
+                                }
                             },
                             "1" => {
                                 ctx.text("stopped server.")
                             },
+                            "2" => {
+                                if !self.rcon.is_some() { // TODO: fix this shit
+                                    self.rcon = Some(proc_control::RCONActor{rcon: None}.start())
+                                }
+                                ctx.text(block_on(self.rcon.as_ref().unwrap().send(proc_control::RCONCmd{
+                                    cmd_type: proc_control::RCONCmdType::CONNECT,
+                                    body: String::new(),
+                                })).unwrap().unwrap());
+                            }
                             _ => {println!("invalid message - {}", text)}
                         }
                     }
@@ -121,8 +153,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsActor {
     }
 }
 
-async fn ws_endpoint(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let resp = ws::start(WsActor {}, &req, stream);
+async fn ws_endpoint(req: HttpRequest, stream: web::Payload, data: web::Data<AppState<'_>>) -> Result<HttpResponse, Error> {
+    let resp = ws::start(WsActor {rcon: None}, &req, stream);
     println!("{:?}", resp);
     resp
 }
@@ -154,7 +186,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .data(AppState {
                 hb: handlebars_ref.clone(),
-                assets: &ASSETS,
+                assets: &ASSETS
             })
             .service(Files::new("/static", "./static"))
             .service(index)

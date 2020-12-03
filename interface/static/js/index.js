@@ -98,4 +98,5 @@ input_text.onkeyup = (e) => {
 
 document.getElementById("btn_start").onclick = () => { cmd(0) }
 document.getElementById("btn_stop").onclick = () => { cmd(1) }
+document.getElementById("btn_rcon").onclick = () => { cmd(2) }
 // }
